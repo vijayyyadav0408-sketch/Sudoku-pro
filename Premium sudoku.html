@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sudoku Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+ margin:0;
+ font-family:Arial;
+ text-align:center;
+ background:#fff;
+ transition:.3s;
+}
+.hidden{display:none}
+
+.dark{
+ background:#111;
+ color:#fff;
+}
+.dark .cell{border-color:#aaa}
+.dark .fixed{background:#444}
+
+button{
+ padding:6px 12px;
+ margin:4px;
+ cursor:pointer;
+}
+button:disabled{
+ opacity:0.5;
+ cursor:not-allowed;
+}
+
+#splash{
+ height:100vh;
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ font-size:28px;
+ animation:fade 2s;
+}
+@keyframes fade{
+ from{opacity:0}
+ to{opacity:1}
+}
+
+#board{
+ display:grid;
+ grid-template-columns:repeat(9,38px);
+ justify-content:center;
+ margin:10px auto;
+}
+
+.cell{
+ width:38px;
+ height:38px;
+ line-height:38px;
+ border:1px solid #999;
+ box-sizing:border-box;
+ cursor:pointer;
+}
+
+.fixed{background:#ddd}
+.selected{outline:2px solid blue}
+.highlight{background:#d6ebff}
+.correct{background:#9cff9c}
+.wrong{background:#ff9c9c}
+
+#pad button{
+ width:38px;
+ height:38px;
+}
+
+.success{
+ color:green;
+ font-size:22px;
+ animation:pop .6s infinite alternate;
+}
+.fail{
+ color:red;
+ font-size:20px;
+}
+@keyframes pop{
+ from{transform:scale(1)}
+ to{transform:scale(1.1)}
+}
+</style>
+</head>
+
+<body>
+
+<!-- SPLASH -->
+<div id="splash">🧩 SUDOKU</div>
+
+<!-- HOME -->
+<div id="home" class="hidden">
+ <h2>Sudoku</h2>
+ <button onclick="startGame('Easy')">Easy</button>
+ <button onclick="startGame('Medium')">Medium</button>
+ <button onclick="startGame('Hard')">Hard</button>
+
+ <!-- HOME AD -->
+ <div style="margin-top:15px;">
+  <script>
+    atOptions = {
+      'key' : '28575747de8b33d58d023e737a8d1435',
+      'format' : 'iframe',
+      'height' : 50,
+      'width' : 320,
+      'params' : {}
+    };
+  </script>
+  <script src="https://www.highperformanceformat.com/28575747de8b33d58d023e737a8d1435/invoke.js"></script>
+ </div>
+
+ <br>
+ <button onclick="showHistory()">📜 History</button>
+ <button onclick="showLeader()">🏆 Leaderboard</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="hidden">
+ <h3 id="levelText"></h3>
+ ⏱ <span id="time">0</span>s |
+ ⭐ <span id="score">0</span> |
+ 💡 <span id="hints">3</span><br>
+
+ <button onclick="goBack()">⬅ Back</button>
+ <button onclick="useHint()">Hint</button>
+ <button onclick="finishGame()" id="finishBtn">🏁 Finish</button>
+ <button onclick="toggleSound()">🔊 <span id="soundText">ON</span></button>
+ <button onclick="toggleTheme()">🌙</button>
+
+ <div id="board"></div>
+
+ <div id="pad">
+  <button onclick="place(1)">1</button>
+  <button onclick="place(2)">2</button>
+  <button onclick="place(3)">3</button>
+  <button onclick="place(4)">4</button>
+  <button onclick="place(5)">5</button>
+  <button onclick="place(6)">6</button>
+  <button onclick="place(7)">7</button>
+  <button onclick="place(8)">8</button>
+  <button onclick="place(9)">9</button>
+ </div>
+
+ <div id="finishMsg" style="display:none;margin-top:10px;"></div>
+
+ <!-- FINISH AD -->
+ <div id="finishAd" style="display:none;margin-top:10px;">
+  <script>
+    atOptions = {
+      'key' : '28575747de8b33d58d023e737a8d1435',
+      'format' : 'iframe',
+      'height' : 50,
+      'width' : 320,
+      'params' : {}
+    };
+  </script>
+  <script src="https://www.highperformanceformat.com/28575747de8b33d58d023e737a8d1435/invoke.js"></script>
+ </div>
+</div>
+
+<!-- HISTORY -->
+<div id="history" class="hidden">
+ <h3>History</h3>
+ <div id="historyList"></div>
+ <button onclick="backHome()">Back</button>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="leader" class="hidden">
+ <h3>Leaderboard</h3>
+ <div id="leaderList"></div>
+ <button onclick="backHome()">Back</button>
+</div>
+
+<canvas id="confetti" style="
+ position:fixed;
+ top:0;left:0;
+ width:100%;
+ height:100%;
+ pointer-events:none;
+ display:none;
+"></canvas>
+
+<script>
+/* SPLASH */
+setTimeout(()=>{
+ document.getElementById("splash").style.display="none";
+ document.getElementById("home").style.display="block";
+},2000);
+
+/* SOUND */
+let soundOn=true;
+const beep=new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=");
+function play(){
+ if(soundOn){
+  beep.currentTime=0;
+  beep.play();
+ }
+}
+function toggleSound(){
+ soundOn=!soundOn;
+ document.getElementById("soundText").innerText=soundOn?"ON":"OFF";
+}
+
+/* THEME */
+function toggleTheme(){
+ document.body.classList.toggle("dark");
+}
+
+/* GAME DATA */
+let solution=[],puzzle=[],selected=null;
+let score=0,time=0,timer,hintLeft=3,levelNow="";
+
+/* START GAME */
+function startGame(level){
+ levelNow=level;
+ hintLeft=3;
+ document.getElementById("hints").innerText=3;
+ document.getElementById("finishBtn").disabled=false;
+ document.getElementById("finishAd").style.display="none";
+
+ document.getElementById("home").style.display="none";
+ document.getElementById("game").style.display="block";
+ document.getElementById("levelText").innerText="Level: "+level;
+
+ score=0;time=0;
+ document.getElementById("score").innerText=0;
+ document.getElementById("time").innerText=0;
+
+ clearInterval(timer);
+ timer=setInterval(()=>{time++;document.getElementById("time").innerText=time},1000);
+
+ solution=generateSolved();
+ puzzle=JSON.parse(JSON.stringify(solution));
+ let remove=level==="Easy"?35:level==="Medium"?45:55;
+ while(remove){
+  let r=Math.floor(Math.random()*9);
+  let c=Math.floor(Math.random()*9);
+  if(puzzle[r][c]!=0){puzzle[r][c]=0;remove--}
+ }
+ drawBoard();
+}
+
+/* DRAW */
+function drawBoard(){
+ const b=document.getElementById("board");
+ b.innerHTML="";
+ for(let r=0;r<9;r++){
+  for(let c=0;c<9;c++){
+   let d=document.createElement("div");
+   d.className="cell";
+   d.dataset.r=r;d.dataset.c=c;
+
+   if(c%3==0)d.style.borderLeft="3px solid black";
+   if(r%3==0)d.style.borderTop="3px solid black";
+   if(c==8)d.style.borderRight="3px solid black";
+   if(r==8)d.style.borderBottom="3px solid black";
+
+   if(puzzle[r][c]!=0){
+    d.innerText=puzzle[r][c];
+    d.classList.add("fixed");
+   }else{
+    d.onclick=()=>selectCell(d,r,c);
+   }
+   b.appendChild(d);
+  }
+ }
+}
+
+/* SELECT */
+function selectCell(cell,r,c){
+ play();
+ selected={cell,r,c};
+ document.querySelectorAll(".cell").forEach(x=>{
+  x.classList.remove("selected","highlight");
+  if(x.dataset.r==r||x.dataset.c==c)x.classList.add("highlight");
+ });
+ cell.classList.add("selected");
+}
+
+/* PLACE */
+function place(n){
+ if(!selected)return;
+ let {cell,r,c}=selected;
+ if(solution[r][c]==n){
+  cell.innerText=n;
+  cell.classList.add("correct");
+  puzzle[r][c]=n;
+  score+=10;
+ }else{
+  cell.classList.add("wrong");
+  score-=5;
+ }
+ document.getElementById("score").innerText=score;
+}
+
+/* HINT */
+function useHint(){
+ if(hintLeft<=0||!selected)return;
+ let {cell,r,c}=selected;
+ cell.innerText=solution[r][c];
+ cell.classList.add("correct");
+ puzzle[r][c]=solution[r][c];
+ hintLeft--;
+ document.getElementById("hints").innerText=hintLeft;
+}
+
+/* FINISH */
+function finishGame(){
+ let done=true;
+ for(let r=0;r<9;r++)for(let c=0;c<9;c++)
+  if(puzzle[r][c]==0)done=false;
+
+ const msg=document.getElementById("finishMsg");
+ msg.style.display="block";
+
+ if(done){
+  clearInterval(timer);
+  document.getElementById("finishBtn").disabled=true;
+  msg.innerHTML="🎉 Congratulations! 🎉";
+  msg.className="success";
+  play();
+  startConfetti();
+  saveHistory();
+ }else{
+  msg.innerHTML="❌ Not Completed";
+  msg.className="fail";
+ }
+
+ document.getElementById("finishAd").style.display="block";
+ setTimeout(()=>{msg.style.display="none"},2500);
+}
+
+/* BACK */
+function goBack(){
+ clearInterval(timer);
+ document.getElementById("game").style.display="none";
+ document.getElementById("home").style.display="block";
+}
+
+/* HISTORY & LEADERBOARD */
+function saveHistory(){
+ let h=JSON.parse(localStorage.getItem("history")||"[]");
+ h.push({level:levelNow,time,score,date:new Date().toLocaleString()});
+ localStorage.setItem("history",JSON.stringify(h));
+
+ let l=JSON.parse(localStorage.getItem("leader")||"[]");
+ l.push(score);
+ l.sort((a,b)=>b-a);
+ l=l.slice(0,5);
+ localStorage.setItem("leader",JSON.stringify(l));
+}
+function showHistory(){
+ document.getElementById("home").style.display="none";
+ document.getElementById("history").style.display="block";
+ let h=JSON.parse(localStorage.getItem("history")||"[]");
+ document.getElementById("historyList").innerHTML=h.map(x=>
+  `${x.date} | ${x.level} | ${x.time}s | ⭐${x.score}<br>`).join("");
+}
+function showLeader(){
+ document.getElementById("home").style.display="none";
+ document.getElementById("leader").style.display="block";
+ let l=JSON.parse(localStorage.getItem("leader")||"[]");
+ document.getElementById("leaderList").innerHTML=l.map((x,i)=>`${i+1}. ⭐ ${x}`).join("<br>");
+}
+function backHome(){
+ document.getElementById("history").style.display="none";
+ document.getElementById("leader").style.display="none";
+ document.getElementById("home").style.display="block";
+}
+
+/* SUDOKU LOGIC */
+function generateSolved(){
+ let g=[...Array(9)].map(()=>Array(9).fill(0));
+ solve(g);return g;
+}
+function solve(g){
+ for(let r=0;r<9;r++)for(let c=0;c<9;c++)
+ if(g[r][c]==0){
+  for(let n of shuffle([1,2,3,4,5,6,7,8,9])){
+   if(valid(g,r,c,n)){g[r][c]=n;if(solve(g))return true;g[r][c]=0;}
+  }
+  return false;
+ }
+ return true;
+}
+function valid(g,r,c,n){
+ for(let i=0;i<9;i++)if(g[r][i]==n||g[i][c]==n)return false;
+ let br=r-r%3,bc=c-c%3;
+ for(let i=0;i<3;i++)for(let j=0;j<3;j++)
+  if(g[br+i][bc+j]==n)return false;
+ return true;
+}
+function shuffle(a){return a.sort(()=>Math.random()-0.5)}
+
+/* CONFETTI */
+const canvas=document.getElementById("confetti");
+const ctx=canvas.getContext("2d");
+let conf=[];
+function startConfetti(){
+ canvas.style.display="block";
+ canvas.width=innerWidth;
+ canvas.height=innerHeight;
+ conf=[];
+ for(let i=0;i<150;i++){
+  conf.push({
+   x:Math.random()*canvas.width,
+   y:Math.random()*canvas.height,
+   r:Math.random()*6+4,
+   d:Math.random()*5+2,
+   c:`hsl(${Math.random()*360},100%,50%)`
+  });
+ }
+ animateConfetti();
+ setTimeout(()=>canvas.style.display="none",3000);
+}
+function animateConfetti(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ conf.forEach(p=>{
+  ctx.beginPath();
+  ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+  ctx.fillStyle=p.c;
+  ctx.fill();
+  p.y+=p.d;
+  if(p.y>canvas.height)p.y=0;
+ });
+ if(canvas.style.display==="block")
+  requestAnimationFrame(animateConfetti);
+}
+</script>
+
+</body>
+</html>
